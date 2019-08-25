@@ -52,37 +52,11 @@ class MongoDbConnection:
         mydb = myclient[db]
         return mydb
 
-# con = MongoDbConnection.getCollection("dota_ml")
-# col = con['data']
-# tsne = TSNE(random_state=69)
-# count = 2000
-# if (count < col.count()):
-#     exit
-# data = np.empty((count,170))
-# i = 0
-# for x in con["data"].find():
-#     #print(i)
-#     d = np.fromiter(transform(x, learningProps).values(), dtype=float)
-#     for player in x["players"]:
-#         d = np.append(d,np.fromiter(transform(player, learningPlayerProps).values(), dtype=float))
-#     data[i] = d
-#     i+=1
-#     if (i == count):
-#         break
-# res = tsne.fit_transform(data)
-# plt.figure(figsize=(10, 10))
-# plt.xlim(res[:, 0].min(), res[:, 0].max() + 1)
-# plt.ylim(res[:, 1].min(), res[:, 1].max() + 1)
-# for i in range(len(res)):
-#     plt.text(res[i, 0], res[i, 1], 'x')
-# plt.xlabel("t-SNE feature 0")
-# plt.xlabel("t-SNE feature 1")
-# print(1)
 def train_hero():
     con = MongoDbConnection.getCollection("dota_ml")
     col = con['data']
-    tsne = TSNE(random_state=69)
-    count = 250*10
+    tsne = TSNE(random_state=69, n_components=2)
+    count = 2000*10
     if (count > col.count()*10):
         exit
     data = np.empty((count,11))
@@ -106,9 +80,9 @@ def train_hero():
     print('data is prepared.')
     print('applying tsne.')
     original["data"] = data
-    original["tsne"] = tsne.fit_transform(original["data"])
+    #original["tsne"] = tsne.fit_transform(original["data"])
     print('tsne is finished.')
-    res = original["tsne"]
+    res = original["data"]#original["tsne"]
     for i in range(len(res)):
         entry = original["tsne_transformed"][original["heroes"][i]['id']]
         entry[0] += res[i, 0]
@@ -136,15 +110,15 @@ def train_hero():
             ymin = entry[1]
     plt.xlim(xmin, xmax + 1)
     plt.ylim(ymin, ymax + 1)
-    agg = AgglomerativeClustering(n_clusters=10)
+    agg = AgglomerativeClustering(n_clusters=11, linkage='average')
     clusters = agg.fit_predict(res)
-    colors = [ "red", "green", "blue", "purple", "white", "pink", "yellow", "orange", "brown", "grey" ]
+    colors = [ "red", "green", "blue", "purple", "white", "pink", "yellow", "orange", "brown", "grey", "x", "x" , "x" , "x" , "x"  ]
     group = []
     for c in colors:
         group.append([])
     for i in range(len(res)):
         if res[i][2] != 0:
-            plt.text(res[i][0], res[i][1], original["heroNames"][i], color=colors[clusters[i]])
+            #plt.text(res[i][0], res[i][1], original["heroNames"][i], color=colors[clusters[i]])
             group[clusters[i]].append(original["heroNames"][i])
     plt.xlabel("t-SNE feature 0")
     plt.xlabel("t-SNE feature 1")
