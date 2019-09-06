@@ -56,14 +56,17 @@ def train_hero():
     con = MongoDbConnection.getCollection("dota_ml")
     col = con['data']
     tsne = TSNE(random_state=69, n_components=2)
-    count = 2000*10
+    count = 1500*10
     if (count > col.count()*10):
         exit
     data = np.empty((count,11))
+    heroesArray = []
     original={'heroNames': [None]*130, 'heroes': [None]*count,'tsne_transformed': [np.zeros(3) for i in repeat(None, 130)]}
     for hero in con["heroes"].find():
-        original["heroNames"][hero['id']] = hero["localized_name"]
+        original["heroNames"][hero['id']] = heroesArray.__len__()
+        heroesArray.append({'id':hero['id'], 'name':hero["localized_name"]})
     i = 0
+    finalData = {'data': [np.zeros(2) for i in repeat(None, heroesArray.__len__())]}
     for x in con["data"].find():
         #print(i)
         for player in x["players"]:
@@ -71,7 +74,7 @@ def train_hero():
                 continue
             heroId = player["hero_id"]
             data[i] = np.fromiter(transform(player, playerOnly).values(), dtype=float)
-            original["heroes"][i] = {'name' :original["heroNames"][heroId], 'id':heroId}
+            original["heroes"][i] = {'id':original["heroNames"][heroId]}
             i+=1
             if i == count:
                 break
@@ -80,9 +83,9 @@ def train_hero():
     print('data is prepared.')
     print('applying tsne.')
     original["data"] = data
-    #original["tsne"] = tsne.fit_transform(original["data"])
+    original["tsne"] = data#tsne.fit_transform(original["data"])
     print('tsne is finished.')
-    res = original["data"]#original["tsne"]
+    res = original["tsne"]
     for i in range(len(res)):
         entry = original["tsne_transformed"][original["heroes"][i]['id']]
         entry[0] += res[i, 0]
@@ -93,12 +96,13 @@ def train_hero():
     for i in range(len(res)):
         entry = res[i]
         if entry[2] != 0:
-            entry[0]/=entry[2]
-            entry[1]/=entry[2]
+            finalData['data'][i][0] =entry[0]/entry[2]
+            finalData['data'][i][1] = entry[1]/entry[2]
     xmin = 0
     xmax = 0
     ymin = 0
     ymax = 0
+    res = finalData['data']
     for entry in res:
         if (entry[0] > xmax):
             xmax = entry[0]
@@ -110,16 +114,15 @@ def train_hero():
             ymin = entry[1]
     plt.xlim(xmin, xmax + 1)
     plt.ylim(ymin, ymax + 1)
-    agg = AgglomerativeClustering(n_clusters=11, linkage='average')
+    agg = AgglomerativeClustering(n_clusters=12)
     clusters = agg.fit_predict(res)
     colors = [ "red", "green", "blue", "purple", "white", "pink", "yellow", "orange", "brown", "grey", "x", "x" , "x" , "x" , "x"  ]
     group = []
     for c in colors:
         group.append([])
     for i in range(len(res)):
-        if res[i][2] != 0:
-            #plt.text(res[i][0], res[i][1], original["heroNames"][i], color=colors[clusters[i]])
-            group[clusters[i]].append(original["heroNames"][i])
+        plt.text(res[i][0], res[i][1], heroesArray[i]['name'], color=colors[clusters[i]])
+        group[clusters[i]].append(heroesArray[i]['name'])
     plt.xlabel("t-SNE feature 0")
     plt.xlabel("t-SNE feature 1")
     for i in range(len(group)):
