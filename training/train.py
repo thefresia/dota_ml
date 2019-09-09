@@ -56,17 +56,18 @@ def train_hero():
     con = MongoDbConnection.getCollection("dota_ml")
     col = con['data']
     tsne = TSNE(random_state=69, n_components=2)
-    count = 1500*10
+    count = 65000*10
     if (count > col.count()*10):
         exit
     data = np.empty((count,11))
     heroesArray = []
-    original={'heroNames': [None]*130, 'heroes': [None]*count,'tsne_transformed': [np.zeros(3) for i in repeat(None, 130)]}
+    properties = playerOnly.__len__()
+    original={'heroNames': [None]*130, 'heroes': [None]*count,'tsne_transformed': [np.zeros(properties+1) for i in repeat(None, 130)]}
     for hero in con["heroes"].find():
         original["heroNames"][hero['id']] = heroesArray.__len__()
         heroesArray.append({'id':hero['id'], 'name':hero["localized_name"]})
     i = 0
-    finalData = {'data': [np.zeros(2) for i in repeat(None, heroesArray.__len__())]}
+    finalData = {'data': [np.zeros(properties) for i in repeat(None, heroesArray.__len__())]}
     for x in con["data"].find():
         #print(i)
         for player in x["players"]:
@@ -87,17 +88,20 @@ def train_hero():
     print('tsne is finished.')
     res = original["tsne"]
     for i in range(len(res)):
+        if i == 82976:
+            a = original["heroes"][i]
+            ff = 22
         entry = original["tsne_transformed"][original["heroes"][i]['id']]
-        entry[0] += res[i, 0]
-        entry[1] += res[i, 1]
-        entry[2] += 1
+        for k in range(properties):
+            entry[k] += res[i, k]
+        entry[properties]+=1
     plt.figure(figsize=(10, 10))
     res = original["tsne_transformed"]
     for i in range(len(res)):
         entry = res[i]
-        if entry[2] != 0:
-            finalData['data'][i][0] =entry[0]/entry[2]
-            finalData['data'][i][1] = entry[1]/entry[2]
+        if entry[properties] != 0:
+            for k in range(properties):
+                finalData['data'][i][k] = entry[k] / entry[properties]
     xmin = 0
     xmax = 0
     ymin = 0
@@ -114,7 +118,7 @@ def train_hero():
             ymin = entry[1]
     plt.xlim(xmin, xmax + 1)
     plt.ylim(ymin, ymax + 1)
-    agg = AgglomerativeClustering(n_clusters=12)
+    agg = AgglomerativeClustering(n_clusters=12, linkage='average')
     clusters = agg.fit_predict(res)
     colors = [ "red", "green", "blue", "purple", "white", "pink", "yellow", "orange", "brown", "grey", "x", "x" , "x" , "x" , "x"  ]
     group = []
