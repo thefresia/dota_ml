@@ -52,51 +52,54 @@ class MongoDbConnection:
         mydb = myclient[db]
         return mydb
 
+def validateModel(amount):
+    pass
+
 def train_hero():
     con = MongoDbConnection.getCollection("dota_ml")
     col = con['data']
     tsne = TSNE(random_state=69, n_components=2)
-    count = 65000*10
+    modelSize = 68000
+    testSize = 8000
+    count = modelSize*10
     if (count > col.count()*10):
         exit
     data = np.empty((count,11))
     heroesArray = []
     properties = playerOnly.__len__()
     original={'heroNames': [None]*130, 'heroes': [None]*count,'tsne_transformed': [np.zeros(properties+1) for i in repeat(None, 130)]}
-    for hero in con["heroes"].find():
+    for hero in con['heroes'].find():
         original["heroNames"][hero['id']] = heroesArray.__len__()
-        heroesArray.append({'id':hero['id'], 'name':hero["localized_name"]})
-    i = 0
-    finalData = {'data': [np.zeros(properties) for i in repeat(None, heroesArray.__len__())]}
-    for x in con["data"].find():
-        #print(i)
-        for player in x["players"]:
-            if player == {}:
+        heroesArray.append({'id':hero['id'], 'name':hero['localized_name']})
+    k = 0
+    finalData = {'data': [np.zeros(properties) for f in repeat(None, heroesArray.__len__())]}
+    for x in con["data"].find(limit = modelSize):
+        for player in x['players']:
+            if player == {} or player['hero_id'] is None:
                 continue
-            heroId = player["hero_id"]
-            data[i] = np.fromiter(transform(player, playerOnly).values(), dtype=float)
-            original["heroes"][i] = {'id':original["heroNames"][heroId]}
-            i+=1
-            if i == count:
-                break
-        if i == count:
-            break
+            heroId = player['hero_id']
+            data[k] = np.fromiter(transform(player, playerOnly).values(), dtype=float)
+            original['heroes'][k] = {'id':original['heroNames'][heroId]}
+            k+=1
+    original['heroes'] = original['heroes'][0:k]
+    data = data[0:k]
+
     print('data is prepared.')
     print('applying tsne.')
-    original["data"] = data
-    original["tsne"] = data#tsne.fit_transform(original["data"])
+    original['data'] = data
+    original['tsne'] = data#tsne.fit_transform(original["data"])
     print('tsne is finished.')
-    res = original["tsne"]
+    res = original['tsne']
     for i in range(len(res)):
-        if i == 82976:
-            a = original["heroes"][i]
-            ff = 22
-        entry = original["tsne_transformed"][original["heroes"][i]['id']]
-        for k in range(properties):
-            entry[k] += res[i, k]
-        entry[properties]+=1
+        heroId = original['heroes'][i]['id']
+        if not (heroId is None):
+            entry = original['tsne_transformed'][heroId]
+            for k in range(properties):
+                entry[k] += res[i, k]
+            entry[properties]+=1
+
     plt.figure(figsize=(10, 10))
-    res = original["tsne_transformed"]
+    res = original['tsne_transformed']
     for i in range(len(res)):
         entry = res[i]
         if entry[properties] != 0:
@@ -118,9 +121,10 @@ def train_hero():
             ymin = entry[1]
     plt.xlim(xmin, xmax + 1)
     plt.ylim(ymin, ymax + 1)
-    agg = AgglomerativeClustering(n_clusters=12, linkage='average')
+    clusters = 6
+    agg = AgglomerativeClustering(n_clusters=clusters, linkage='ward')
     clusters = agg.fit_predict(res)
-    colors = [ "red", "green", "blue", "purple", "white", "pink", "yellow", "orange", "brown", "grey", "x", "x" , "x" , "x" , "x"  ]
+    colors = [ "red", "green", "blue", "purple", "white", "pink", "yellow", "orange", "brown", "grey", "blue", "orange", "brown", "grey", "blue", "orange", "brown", "grey", "blue"  ]
     group = []
     for c in colors:
         group.append([])
@@ -134,6 +138,54 @@ def train_hero():
         for hero in group[i]:
             print(hero, end = ', ')
         print('\n')
-    print('tis over')
+    model = {}
+    k = 0
+    for x in con["data"].find(limit = modelSize):
+        if any(player is {} or 'hero_id' not in player or player['hero_id'] is None for player in x['players']):
+            continue
+        key = []
+        for player in x['players']:
+            heroId = player['hero_id']
+            key.append(clusters[original['heroNames'][heroId]])
+        radiant = sorted(key[0:5])
+        dire = sorted(key[5:10])
+        rd = repr(radiant+dire)
+        dr = repr(dire+radiant)
+        key = rd
+        if dr in model:
+            key = dr
+        elif not (key in model):
+            model[key] = {'matches' : 0, 'radiantwin': 0}
+        model[key]['matches']+=1
+        model[key]['radiantwin']+=int(x['radiant_win'])
+        
+
+    testResult = {'matches': 0, 'correct': 0, 'nodata': 0}
+    for x in con["data"].find(skip=modelSize, limit = testSize):
+        if any(player is {} or 'hero_id' not in player or player['hero_id'] is None for player in x['players']):
+            continue
+        key = []
+        for player in x['players']:
+            heroId = player['hero_id']
+            key.append(clusters[original['heroNames'][heroId]])
+        radiant = sorted(key[0:5])
+        dire = sorted(key[5:10])
+        rd = repr(radiant+dire)
+        dr = repr(dire+radiant)
+        if dr in model:
+            key = dr
+        if rd in model:
+            key = rd
+        else:
+            testResult['nodata']+=1
+            continue
+        isRadiant = model[key]['radiantwin']*2 >= model[key]['matches']
+        testResult['matches']+=1
+        testResult['correct']+=int(isRadiant == x['radiant_win'])
+
+    print('No data: %s' % testResult['nodata'])
+    print('Matches tested: %s' % testResult['matches'])
+    print('Correct predictions: %s' % testResult['correct'])
+    print('Precision: %s' % (testResult['correct']/testResult['matches']))
 
 train_hero()
