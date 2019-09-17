@@ -3,6 +3,7 @@ from sklearn.manifold import TSNE
 from sklearn.datasets.samples_generator import make_blobs
 from sklearn.cluster import AgglomerativeClustering
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 from itertools import repeat
 import numpy as np
 import pymongo
@@ -27,7 +28,7 @@ learningPlayerProps = { "assists", "deaths",
     "hero_id", "kills", "last_hits","tower_damage","xp_per_min",
     "win","isRadiant","kda"}
 playerOnly = { "assists", "deaths",
-    "denies","gold_per_min","hero_damage","hero_healing",
+    "gold_per_min","hero_damage","hero_healing",
     "kills", "last_hits","tower_damage","xp_per_min",
     "win"
 
@@ -64,7 +65,7 @@ def train_hero():
     count = modelSize*10
     if (count > col.count()*10):
         exit
-    data = np.empty((count,11))
+    data = np.empty((count,10))
     heroesArray = []
     properties = playerOnly.__len__()
     original={'heroNames': [None]*130, 'heroes': [None]*count,'tsne_transformed': [np.zeros(properties+1) for i in repeat(None, 130)]}
@@ -121,7 +122,7 @@ def train_hero():
             ymin = entry[1]
     plt.xlim(xmin, xmax + 1)
     plt.ylim(ymin, ymax + 1)
-    clusters = 6
+    clusters = 4
     agg = AgglomerativeClustering(n_clusters=clusters, linkage='ward')
     clusters = agg.fit_predict(res)
     colors = [ "red", "green", "blue", "purple", "white", "pink", "yellow", "orange", "brown", "grey", "blue", "orange", "brown", "grey", "blue", "orange", "brown", "grey", "blue"  ]
@@ -140,6 +141,7 @@ def train_hero():
         print('\n')
     model = {}
     k = 0
+
     for x in con["data"].find(limit = modelSize):
         if any(player is {} or 'hero_id' not in player or player['hero_id'] is None for player in x['players']):
             continue
@@ -154,11 +156,13 @@ def train_hero():
         key = rd
         if dr in model:
             key = dr
-        elif not (key in model):
+        elif rd in model:
+            key = rd
+        else:
             model[key] = {'matches' : 0, 'radiantwin': 0}
         model[key]['matches']+=1
         model[key]['radiantwin']+=int(x['radiant_win'])
-        
+
 
     testResult = {'matches': 0, 'correct': 0, 'nodata': 0}
     for x in con["data"].find(skip=modelSize, limit = testSize):
@@ -174,7 +178,7 @@ def train_hero():
         dr = repr(dire+radiant)
         if dr in model:
             key = dr
-        if rd in model:
+        elif rd in model:
             key = rd
         else:
             testResult['nodata']+=1
@@ -188,4 +192,38 @@ def train_hero():
     print('Correct predictions: %s' % testResult['correct'])
     print('Precision: %s' % (testResult['correct']/testResult['matches']))
 
-train_hero()
+#train_hero()
+#%%
+from mpl_toolkits.mplot3d import Axes3D
+import matplotlib.pyplot as plt
+from matplotlib import cm
+from matplotlib.ticker import LinearLocator, FormatStrFormatter
+import numpy as np
+
+
+fig = plt.figure()
+ax = fig.gca(projection='3d')
+
+# Make data.
+X = np.arange(-5, 5, 1)
+Y = np.arange(-5, 5, 1)
+X, Y = np.meshgrid(X, Y)
+f = lambda x,y: x+y
+Z = f(X,Y)
+
+# Plot the surface.
+surf = ax.plot_surface(X, Y, Z, cmap=cm.coolwarm,
+                       linewidth=0, antialiased=False)
+
+# Customize the z axis.
+ax.set_zlim(-10, 10)
+ax.zaxis.set_major_locator(LinearLocator(10))
+ax.zaxis.set_major_formatter(FormatStrFormatter('%.02f'))
+
+# Add a color bar which maps values to colors.
+fig.colorbar(surf, shrink=0.5, aspect=5)
+
+plt.show()
+
+
+#%%
