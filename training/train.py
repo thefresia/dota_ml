@@ -53,8 +53,133 @@ class MongoDbConnection:
         mydb = myclient[db]
         return mydb
 
-def validateModel(amount):
-    pass
+class ModelTraining:
+    con = MongoDbConnection.getCollection("dota_ml")
+    heroesArray = []
+    originalHeroes = [None]*130
+    modelSize = 0
+    clustersSize = 0
+    trainSize = 0
+    averages = []
+
+    def __init__(self, trainSize):
+        self.trainSize = trainSize
+        for hero in self.con['heroes'].find():
+            self.originalHeroes[hero['id']] = self.heroesArray.__len__()
+            self.heroesArray.append({'id':hero['id'], 'name':hero['localized_name']})
+
+    def train_test(self, size, clusters):
+        self.modelSize = size
+        self.clustersSize = clusters
+        data = self.prepareModel()
+        averages = self.findAverages(data)
+        self.averages = averages
+        clustersArray = self.clusterize(averages)
+        model = self.trainModel(clustersArray)
+        return self.testModel(clustersArray, model)
+    
+    def prepare_data(self, size):
+        self.modelSize = size
+        data = self.prepareModel()
+        self.averages  = self.findAverages(data)
+    
+    def clusterize_train(self, clusters):
+        self.clustersSize = clusters
+        clustersArray = self.clusterize(self.averages)
+        model = self.trainModel(clustersArray)
+        return self.testModel(clustersArray, model)
+
+    def prepareModel(self):
+        con = MongoDbConnection.getCollection("dota_ml")
+        col = self.con['data']
+        count = self.modelSize*10
+        if (count > col.count()*10):
+            exit
+        properties = playerOnly.__len__()
+        data = {'values' : np.empty((count, properties)), 'heroes' : [None]*count}
+        k = 0
+        for x in con["data"].find(limit = self.modelSize):
+            for player in x['players']:
+                if player == {} or player['hero_id'] is None:
+                    continue
+                heroId = player['hero_id']
+                data['values'][k] = np.fromiter(transform(player, playerOnly).values(), dtype=float)
+                data['heroes'][k] = self.originalHeroes[heroId]
+                k+=1
+        data['heroes'] = data['heroes'][0:k]
+        data['values'] = data['values'][0:k]
+        return data
+
+    def findAverages(self, data):
+        properties = playerOnly.__len__()
+        averages = [{ 'data': np.zeros(properties), 'amount' : 0 } for f in repeat(None, self.heroesArray.__len__())]
+        finalData = [np.zeros(properties) for f in repeat(None, self.heroesArray.__len__())]
+        for i in range(len(data['values'])):
+            heroId = data['heroes'][i]
+            if not (heroId is None):
+                entry = averages[heroId]
+                for k in range(properties):
+                    entry['data'][k] += data['values'][i, k]
+                entry['amount']+=1
+        for i in range(len(averages)):
+            entry = averages[i]
+            if entry['amount'] != 0:
+                for k in range(properties):
+                    finalData[i][k] = entry['data'][k] / entry['amount']
+        return finalData
+    
+    def clusterize(self, averages):
+        agg = AgglomerativeClustering(n_clusters=self.clustersSize, linkage='ward')
+        return agg.fit_predict(averages)
+    
+    def trainModel(self, clusters):
+        model = {}
+        for x in self.con["data"].find(limit = self.modelSize):
+            if any(player is {} or 'hero_id' not in player or player['hero_id'] is None for player in x['players']):
+                continue
+            key = []
+            for player in x['players']:
+                heroId = player['hero_id']
+                key.append(clusters[self.originalHeroes[heroId]])
+            radiant = sorted(key[0:5])
+            dire = sorted(key[5:10])
+            rd = repr(radiant+dire)
+            dr = repr(dire+radiant)
+            key = rd
+            if dr in model:
+                key = dr
+            elif rd in model:
+                key = rd
+            else:
+                model[key] = {'matches' : 0, 'radiantwin': 0}
+            model[key]['matches']+=1
+            model[key]['radiantwin']+=int(x['radiant_win'])
+        return model
+    
+    def testModel(self, clusters, model):
+        testResult = {'matches': 0, 'correct': 0, 'nodata': 0}
+        for x in self.con["data"].find(skip=self.modelSize, limit = self.trainSize):
+            if any(player is {} or 'hero_id' not in player or player['hero_id'] is None for player in x['players']):
+                continue
+            key = []
+            for player in x['players']:
+                heroId = player['hero_id']
+                key.append(clusters[self.originalHeroes[heroId]])
+            radiant = sorted(key[0:5])
+            dire = sorted(key[5:10])
+            rd = repr(radiant+dire)
+            dr = repr(dire+radiant)
+            if dr in model:
+                key = dr
+            elif rd in model:
+                key = rd
+            else:
+                testResult['nodata']+=1
+                continue
+            isRadiant = model[key]['radiantwin']*2 >= model[key]['matches']
+            testResult['matches']+=1
+            testResult['correct']+=int(isRadiant == x['radiant_win'])
+        return testResult
 
 def train_hero():
     con = MongoDbConnection.getCollection("dota_ml")
@@ -200,16 +325,23 @@ from matplotlib import cm
 from matplotlib.ticker import LinearLocator, FormatStrFormatter
 import numpy as np
 
+m = ModelTraining(6000)
 
 fig = plt.figure()
 ax = fig.gca(projection='3d')
 
 # Make data.
-X = np.arange(-5, 5, 1)
-Y = np.arange(-5, 5, 1)
-X, Y = np.meshgrid(X, Y)
-f = lambda x,y: x+y
-Z = f(X,Y)
+samples = np.arange(30000, 80000, 10000, dtype=np.dtype(int))
+clusters = np.arange(4, 9, 1, dtype=np.dtype(int))
+samples, clusters = np.meshgrid(samples, clusters)
+data = lambda x : x['correct']/x['matches']
+Z = np.copy(samples)
+for i in range(np.size(Z,0)):
+    m.prepare_data(samples[i,i].item())
+    for j in range(np.size(Z,1)):
+        trained = m.train_test(samples[i,j].item(), clusters[i,j].item(), 6000)
+        Z[i,j] = data(trained)
+
 
 # Plot the surface.
 surf = ax.plot_surface(X, Y, Z, cmap=cm.coolwarm,
