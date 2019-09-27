@@ -1,6 +1,8 @@
 #%%
 #from sklearn.manifold import TSNE
 #from sklearn.datasets.samples_generator import make_blobs
+import scipy as sp
+import scipy.interpolate
 from sklearn.cluster import AgglomerativeClustering
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
@@ -215,14 +217,14 @@ from matplotlib import cm
 from matplotlib.ticker import LinearLocator, FormatStrFormatter
 import numpy as np
 
-m = ModelTraining(70000,6000)
+m = ModelTraining(93000,7000)
 
 fig = plt.figure()
 ax = fig.gca(projection='3d')
 
 # Make data.
-samples = np.arange(30000, 75000, 5000, dtype=np.dtype(int))
-clusters = np.arange(4, 10, 1, dtype=np.dtype(int))
+samples = np.arange(30000, 93000, 3000, dtype=np.dtype(int))
+clusters = np.arange(3, 10, 1, dtype=np.dtype(int))
 X, Y = np.meshgrid(samples, clusters)
 data = lambda x : x['correct']/x['matches']*100
 Z = np.copy(X)
@@ -232,10 +234,11 @@ for i in range(np.size(Z,1)):
         trained = m.clusterize_train(Y[j,i].item())
         Z[j,i] = data(trained)
 
-surf = ax.plot_surface(X, Y, Z, cmap=cm.coolwarm,
+
+surf = ax.plot_surface(X, Y, Z, cmap=cm.coolwarm, rstride=1, cstride=1,
                        linewidth=0, antialiased=True)
 
-ax.set_zlim(50, 55)
+ax.set_zlim(48, 56)
 
 ax.set_xlabel('Обучающая выборка') 
 ax.set_xticks(samples)

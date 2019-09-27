@@ -122,19 +122,22 @@ class OpendotaApi:
     def proceedMatches(self):
         client = pymongo.MongoClient("mongodb://localhost:27017/")
         db = client["dota_ml"]
-        col = db["matches"]
+        col = db["data"]
 
-        rawDir = os.path.dirname(os.getcwd())+'\\data\\matches\\raw\\'
+        rawDir = os.path.dirname(os.getcwd())+'/dota_ml/data/matches/'
         for matchFolder in os.listdir(rawDir):
-            folder = rawDir+matchFolder+'\\'
+            folder = rawDir+matchFolder+'/'
             if len(os.listdir(folder)) == 0:
                 print(folder +' is empty')
                 os.rmdir(folder)
                 continue
             for match in os.listdir(folder):
-                matchPath = matchFolder + '\\' + match 
+                matchPath = matchFolder + '/' + match 
                 with open(rawDir+matchPath) as f:
                     data = json.load(f)
+                    if not (col.find_one({'match_id': data['match_id']}) is None) or not data['game_mode'] in [22,2,3,4,5]:
+                        continue
+                    print('inserting %d'%data['match_id'])
                     col.insert_one(self.remove_none(data))
 
 caller = OpendotaApi()
