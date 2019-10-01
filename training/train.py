@@ -68,6 +68,7 @@ class ModelTraining:
     trainSize = 0
     trainSkip = 0
     averages = []
+    matrix = None
 
     def __init__(self, trainSkip, trainSize):
         self.trainSize = trainSize
@@ -106,6 +107,46 @@ class ModelTraining:
         print('Saved: %s'%path)
         with open(path, 'wb+') as handle:
             pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+    def _hero_matrix_(self):
+        path = os.path.join(os.path.dirname(__file__), '{}/{}.pickle'.format('matrices',self.trainSkip))
+        if os.path.exists(path):
+            self.matrix  = self.___deserialize___(path)
+        else:   
+            matrix = [[{'matches': 0, 'won':0, 'winrate' : 0} for x in range(len(self.heroesArray))] for y in range(len(self.heroesArray))] 
+            for x in self.con["data"].find(limit = self.trainSkip):
+                if any(player is {} or 'hero_id' not in player or player['hero_id'] is None for player in x['players']):
+                    continue
+                for i in range(0,4):
+                    for j in range (i+1, 4):
+                        if (i == j): 
+                            break
+                        r,c = self.originalHeroes[x['players'][i]['hero_id']], self.originalHeroes[x['players'][j]['hero_id']]
+                        r,c = min(r,c), max(r,c)
+                        matrix[r][c]['matches']+=1
+                        matrix[r][c]['won']+=x['radiant_win']
+                    for j in range (5,9):
+                        a,b = self.originalHeroes[x['players'][i]['hero_id']], self.originalHeroes[x['players'][j]['hero_id']]
+                        r,c = max(a,b), min(a,b)
+                        matrix[r][c]['matches']+=1
+                        matrix[r][c]['won']+= (a == r) == x['radiant_win']
+                for i in range(5,8):
+                    for j in range (i+1, 9):
+                        r,c = self.originalHeroes[x['players'][i]['hero_id']], self.originalHeroes[x['players'][j]['hero_id']]
+                        r,c = min(r,c), max(r,c)
+                        matrix[r][c]['matches']+=1
+                        matrix[r][c]['won']+= not x['radiant_win']
+            for i in range(0,len(self.heroesArray)):
+                for j in range (0, len(self.heroesArray)):
+                    if (i == j):
+                        continue
+                    matrix[i][j]['winrate'] = 0 if matrix[i][j]['matches'] == 0 else matrix[i][j]['won'] / matrix[i][j]['matches']
+            self.___serialize___('matrices', self.trainSkip, matrix)
+            self.matrix = matrix
+        return self.matrix
+
+
+
 
     def ___prepare_data___(self):
         con = MongoDbConnection.getCollection("dota_ml")
@@ -186,6 +227,7 @@ class ModelTraining:
             if any(player is {} or 'hero_id' not in player or player['hero_id'] is None for player in x['players']):
                 continue
             key = []
+            rkey = []
             for player in x['players']:
                 heroId = player['hero_id']
                 key.append(clusters[self.originalHeroes[heroId]])
@@ -194,16 +236,38 @@ class ModelTraining:
             rd = repr(radiant+dire)
             dr = repr(dire+radiant)
             if dr in model:
-                key = dr
+                rkey = dr
             elif rd in model:
-                key = rd
+                rkey = rd
             else:
                 testResult['nodata']+=1
                 continue
-            isRadiant = model[key]['radiantwin']*2 >= model[key]['matches']
+            evaluation = model[rkey]['radiantwin'] / model[rkey]['matches'] + self.___evaluate_advantage___(key)
+            print(str(self.___evaluate_advantage___(key)) + ' ' + str(model[rkey]['radiantwin'] / model[rkey]['matches']) + ' ' + str(evaluation) + ' ' + str(x['radiant_win']))
+            isRadiant = evaluation > 0.5487
             testResult['matches']+=1
             testResult['correct']+=int(isRadiant == x['radiant_win'])
         return testResult
+    
+    def ___evaluate_advantage___(self, heroes):
+        ladv = 0
+        radv = 0
+        v = 0
+        for i in range(0,4):
+            for j in range (i+1, 4):
+                if (i == j): 
+                    break
+                r,c = min(heroes[i], heroes[j]), max(heroes[i], heroes[j])
+                ladv += self.matrix[r][c]['winrate']
+            for j in range (5,9):
+                r,c = max(heroes[i], heroes[j]), min(heroes[i], heroes[j])
+                v += self.matrix[r][c]['winrate']
+        for i in range(5,8):
+            for j in range (i+1, 9):
+                r,c = min(heroes[i], heroes[j]), max(heroes[i], heroes[j])
+                radv += self.matrix[r][c]['winrate']
+        result = (ladv - radv)/15 + v/250 
+        return result 
 
     #print('No data: %s' % testResult['nodata'])
     #print('Matches tested: %s' % testResult['matches'])
@@ -217,7 +281,10 @@ from matplotlib import cm
 from matplotlib.ticker import LinearLocator, FormatStrFormatter
 import numpy as np
 
-m = ModelTraining(93000,7000)
+m = ModelTraining(93000,6000)
+matr = m._hero_matrix_()
+m.prepare_data(90000)
+trained = m.clusterize_train(4)
 
 fig = plt.figure()
 ax = fig.gca(projection='3d')
