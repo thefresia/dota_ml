@@ -223,33 +223,47 @@ class ModelTraining:
     
     def ___test_model___(self, clusters, model):
         testResult = {'matches': 0, 'correct': 0, 'nodata': 0}
-        for x in self.con["data"].find(skip=self.trainSkip, limit = self.trainSize):
-            if any(player is {} or 'hero_id' not in player or player['hero_id'] is None for player in x['players']):
+        res = []
+        multa = 100
+        multb = 150
+        for j in range(-multa, multa, 20):
+            if (j == 0):
                 continue
-            key = []
-            rkey = []
-            for player in x['players']:
-                heroId = player['hero_id']
-                key.append(clusters[self.originalHeroes[heroId]])
-            radiant = sorted(key[0:5])
-            dire = sorted(key[5:10])
-            rd = repr(radiant+dire)
-            dr = repr(dire+radiant)
-            if dr in model:
-                rkey = dr
-            elif rd in model:
-                rkey = rd
-            else:
-                testResult['nodata']+=1
-                continue
-            evaluation = model[rkey]['radiantwin'] / model[rkey]['matches'] + self.___evaluate_advantage___(key)
-            print(str(self.___evaluate_advantage___(key)) + ' ' + str(model[rkey]['radiantwin'] / model[rkey]['matches']) + ' ' + str(evaluation) + ' ' + str(x['radiant_win']))
-            isRadiant = evaluation > 0.5487
-            testResult['matches']+=1
-            testResult['correct']+=int(isRadiant == x['radiant_win'])
+            for g in range(-multb, multb, 25):
+                if (g == 0):
+                    continue
+                for k in range(41, 59, 3):
+                    k = k / 100
+                    testResult = {'matches': 0, 'correct': 0, 'nodata': 0}
+                    for x in self.con["data"].find(skip=self.trainSkip, limit = self.trainSize):
+                        if any(player is {} or 'hero_id' not in player or player['hero_id'] is None for player in x['players']):
+                            continue
+                        key = []
+                        rkey = []
+                        for player in x['players']:
+                            heroId = player['hero_id']
+                            key.append(clusters[self.originalHeroes[heroId]])
+                        radiant = sorted(key[0:5])
+                        dire = sorted(key[5:10])
+                        rd = repr(radiant+dire)
+                        dr = repr(dire+radiant)
+                        if dr in model:
+                            rkey = dr
+                        elif rd in model:
+                            rkey = rd
+                        else:
+                            testResult['nodata']+=1
+                            continue
+                        evaluation = model[rkey]['radiantwin'] / model[rkey]['matches'] + self.___evaluate_advantage___(key, j, g)
+                        isRadiant = evaluation > k
+                        testResult['matches']+=1
+                        testResult['correct']+=int(isRadiant == x['radiant_win'])
+                    res.append({'wr': testResult['correct']/testResult['matches'], 'multa' : j, 'multb' : g, 'eval' : k})
+                    print('Done: %s %s %s %s'%(j,g,k,testResult['correct']/testResult['matches']))
+        self.___serialize___('','permutation', res)
         return testResult
     
-    def ___evaluate_advantage___(self, heroes):
+    def ___evaluate_advantage___(self, heroes, multa, multb):
         ladv = 0
         radv = 0
         v = 0
@@ -266,7 +280,7 @@ class ModelTraining:
             for j in range (i+1, 9):
                 r,c = min(heroes[i], heroes[j]), max(heroes[i], heroes[j])
                 radv += self.matrix[r][c]['winrate']
-        result = (ladv - radv)/15 + v/250 
+        result = (ladv - radv)/multa + v/multb 
         return result 
 
     #print('No data: %s' % testResult['nodata'])
@@ -286,7 +300,7 @@ matr = m._hero_matrix_()
 m.prepare_data(90000)
 trained = m.clusterize_train(4)
 
-fig = plt.figure()
+'''fig = plt.figure()
 ax = fig.gca(projection='3d')
 
 # Make data.
@@ -317,7 +331,7 @@ ax.zaxis.set_major_formatter(FormatStrFormatter('%.02f'))
 
 fig.colorbar(surf, shrink=0.3, aspect=5)
 
-plt.show()
+plt.show()'''
 
 
 #%%
