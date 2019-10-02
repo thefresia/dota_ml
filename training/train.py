@@ -209,15 +209,13 @@ class ModelTraining:
                 dire = sorted(key[5:10])
                 rd = repr(radiant+dire)
                 dr = repr(dire+radiant)
-                key = rd
-                if dr in model:
-                    key = dr
-                elif rd in model:
-                    key = rd
-                else:
-                    model[key] = {'matches' : 0, 'radiantwin': 0}
-                model[key]['matches']+=1
-                model[key]['radiantwin']+=int(x['radiant_win'])
+                if rd not in model or dr not in model:
+                    model[rd] = {'radiantmatches' : 0, 'dirematches' : 0, 'radiantwon': 0, 'direwon' : 0}
+                    model[dr] = {'radiantmatches' : 0, 'dirematches' : 0, 'radiantwon': 0, 'direwon' : 0}
+                model[rd]['radiantmatches'] +=1 
+                model[dr]['dirematches'] +=1
+                model[rd]['radiantwon'] += x['radiant_win']
+                model[dr]['direwon'] += not x['radiant_win']
             self.___serialize___('models','{}_{}'.format(self.modelSize, self.clustersSize), model)
             return model
     
@@ -232,14 +230,13 @@ class ModelTraining:
             for g in range(-multb, multb, 25):
                 if (g == 0):
                     continue
-                for k in range(41, 59, 3):
+                for k in range(-12, 12, 3):
                     k = k / 100
                     testResult = {'matches': 0, 'correct': 0, 'nodata': 0}
                     for x in self.con["data"].find(skip=self.trainSkip, limit = self.trainSize):
                         if any(player is {} or 'hero_id' not in player or player['hero_id'] is None for player in x['players']):
                             continue
                         key = []
-                        rkey = []
                         for player in x['players']:
                             heroId = player['hero_id']
                             key.append(clusters[self.originalHeroes[heroId]])
@@ -247,15 +244,11 @@ class ModelTraining:
                         dire = sorted(key[5:10])
                         rd = repr(radiant+dire)
                         dr = repr(dire+radiant)
-                        if dr in model:
-                            rkey = dr
-                        elif rd in model:
-                            rkey = rd
-                        else:
+                        if rd not in model:
                             testResult['nodata']+=1
                             continue
-                        evaluation = model[rkey]['radiantwin'] / model[rkey]['matches'] + self.___evaluate_advantage___(key, j, g)
-                        isRadiant = evaluation > k
+                        evaluation = 0 if model[rd]['radiantmatches'] == 0 else model[rd]['radiantwon'] / model[rd]['radiantmatches'] - 0 if model[dr]['dirematches'] == 0 else model[dr]['direwon'] / model[dr]['dirematches'] #+ self.___evaluate_advantage___(key, j, g)
+                        isRadiant = evaluation > 0.024
                         testResult['matches']+=1
                         testResult['correct']+=int(isRadiant == x['radiant_win'])
                     res.append({'wr': testResult['correct']/testResult['matches'], 'multa' : j, 'multb' : g, 'eval' : k})
