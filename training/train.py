@@ -83,6 +83,7 @@ class ModelTraining:
     
     def prepare_data(self, size):
         self.modelSize = size
+        self._hero_matrix_()
         path = os.path.join(os.path.dirname(__file__), '{}/{}.pickle'.format('averages',size))
         if os.path.exists(path):
             self.averages  = self.___deserialize___(path)
@@ -117,21 +118,19 @@ class ModelTraining:
             for x in self.con["data"].find(limit = self.trainSkip):
                 if any(player is {} or 'hero_id' not in player or player['hero_id'] is None for player in x['players']):
                     continue
-                for i in range(0,4):
-                    for j in range (i+1, 4):
-                        if (i == j): 
-                            break
+                for i in range(0,5):
+                    for j in range (i+1, 5):
                         r,c = self.originalHeroes[x['players'][i]['hero_id']], self.originalHeroes[x['players'][j]['hero_id']]
                         r,c = min(r,c), max(r,c)
                         matrix[r][c]['matches']+=1
                         matrix[r][c]['won']+=x['radiant_win']
-                    for j in range (5,9):
+                    for j in range (5,10):
                         a,b = self.originalHeroes[x['players'][i]['hero_id']], self.originalHeroes[x['players'][j]['hero_id']]
                         r,c = max(a,b), min(a,b)
                         matrix[r][c]['matches']+=1
                         matrix[r][c]['won']+= (a == r) == x['radiant_win']
-                for i in range(5,8):
-                    for j in range (i+1, 9):
+                for i in range(5,9):
+                    for j in range (i+1, 10):
                         r,c = self.originalHeroes[x['players'][i]['hero_id']], self.originalHeroes[x['players'][j]['hero_id']]
                         r,c = min(r,c), max(r,c)
                         matrix[r][c]['matches']+=1
@@ -227,24 +226,26 @@ class ModelTraining:
             if any(player is {} or 'hero_id' not in player or player['hero_id'] is None for player in x['players']):
                 continue
             key = []
-            rkey = []
+            hkey = []
             for player in x['players']:
                 heroId = player['hero_id']
+                hkey.append(self.originalHeroes[heroId])
                 key.append(clusters[self.originalHeroes[heroId]])
             radiant = sorted(key[0:5])
             dire = sorted(key[5:10])
             rd = repr(radiant+dire)
             dr = repr(dire+radiant)
             if dr in model:
-                rkey = dr
+                key = dr
             elif rd in model:
-                rkey = rd
+                key = rd
             else:
                 testResult['nodata']+=1
                 continue
-            evaluation = model[rkey]['radiantwin'] / model[rkey]['matches'] + self.___evaluate_advantage___(key)
-            print(str(self.___evaluate_advantage___(key)) + ' ' + str(model[rkey]['radiantwin'] / model[rkey]['matches']) + ' ' + str(evaluation) + ' ' + str(x['radiant_win']))
-            isRadiant = evaluation > 0.5487
+            adv = self.___evaluate_advantage___(hkey)
+            evaluation =  model[key]['radiantwin'] / model[key]['matches'] + adv
+            #print(str(adv) + ' ' + str(model[rkey]['radiantwin'] / model[rkey]['matches']) + ' ' + str(evaluation) + ' ' + str(x['radiant_win']))
+            isRadiant = evaluation > 0.5
             testResult['matches']+=1
             testResult['correct']+=int(isRadiant == x['radiant_win'])
         return testResult
@@ -252,22 +253,22 @@ class ModelTraining:
     def ___evaluate_advantage___(self, heroes):
         ladv = 0
         radv = 0
+        k = 0
         v = 0
-        for i in range(0,4):
-            for j in range (i+1, 4):
-                if (i == j): 
-                    break
+        for i in range(0,5):
+            for j in range (i+1, 5):
                 r,c = min(heroes[i], heroes[j]), max(heroes[i], heroes[j])
                 ladv += self.matrix[r][c]['winrate']
-            for j in range (5,9):
+            for j in range (5,10):
                 r,c = max(heroes[i], heroes[j]), min(heroes[i], heroes[j])
-                v += self.matrix[r][c]['winrate']
-        for i in range(5,8):
-            for j in range (i+1, 9):
+                k+=1
+                v += self.matrix[r][c]['winrate'] if heroes[i]>heroes[j] else 1-self.matrix[r][c]['winrate'] #???
+        for i in range(5,10):
+            for j in range (i+1, 10):
                 r,c = min(heroes[i], heroes[j]), max(heroes[i], heroes[j])
                 radv += self.matrix[r][c]['winrate']
-        result = (ladv - radv)/15 + v/250 
-        return result 
+        result = (ladv - radv)/10 + v/25-0.5
+        return result*1.7
 
     #print('No data: %s' % testResult['nodata'])
     #print('Matches tested: %s' % testResult['matches'])
@@ -281,10 +282,10 @@ from matplotlib import cm
 from matplotlib.ticker import LinearLocator, FormatStrFormatter
 import numpy as np
 
-m = ModelTraining(93000,6000)
-matr = m._hero_matrix_()
-m.prepare_data(90000)
-trained = m.clusterize_train(4)
+m = ModelTraining(70000,6000)
+m._hero_matrix_()
+m.prepare_data(70000)
+trained = m.clusterize_train(2)
 
 fig = plt.figure()
 ax = fig.gca(projection='3d')
