@@ -3,3 +3,8 @@
 *.code-workspace
 data/
 .vscode/
+*.egg-info/
+cache/
+__pycache__/
+Pipfile*
+.vscode/

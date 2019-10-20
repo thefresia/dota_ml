@@ -1,5 +1,5 @@
 #%%
-import pymongo
+from db.connection import MongoDbConnection
 
 con = MongoDbConnection.getCollection("dota_ml")
 col = con['data']

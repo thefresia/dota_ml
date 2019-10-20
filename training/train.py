@@ -1,6 +1,7 @@
 #%%
 #from sklearn.manifold import TSNE
 #from sklearn.datasets.samples_generator import make_blobs
+from db.connection import MongoDbConnection
 import scipy as sp
 import scipy.interpolate
 from sklearn.cluster import AgglomerativeClustering
@@ -9,7 +10,6 @@ from mpl_toolkits.mplot3d import Axes3D
 from itertools import repeat
 import numpy as np
 import os
-import pymongo
 import mglearn
 import pickle
 from pprint import pprint
@@ -37,7 +37,6 @@ playerOnly = { "assists", "deaths",
     "gold_per_min","hero_damage","hero_healing",
     "kills", "last_hits","tower_damage","xp_per_min",
     "win"
-
 }
 
 def transform(obj, properties):
@@ -45,19 +44,12 @@ def transform(obj, properties):
     if obj == {}:
         return dict.fromkeys(properties, 0)
     for prop in properties:
-        data = obj[prop]
+        data = 0 if not prop in obj else obj[prop]
         if (prop == "players"):
             for i in range(len(data)):
                 data[i] = {} if 'leaver_status' in data[i] and (data[i]['leaver_status'] != 0 or data[i]['abandons'] !=0) else transform(data[i], playerProps) 
         newObj[prop] = data
     return newObj
-
-class MongoDbConnection:
-    @staticmethod
-    def getCollection(db):
-        myclient = pymongo.MongoClient("mongodb://localhost:27017/")
-        mydb = myclient[db]
-        return mydb
 
 class ModelTraining:
     con = MongoDbConnection.getCollection("dota_ml")
@@ -68,6 +60,8 @@ class ModelTraining:
     trainSize = 0
     trainSkip = 0
     averages = []
+    activator = 0.5
+    multiplier = 1
     matrix = None
 
     def __init__(self, trainSkip, trainSize):
@@ -99,6 +93,10 @@ class ModelTraining:
         model = self.___train_model___(clustersArray)
         return self.___test_model___(clustersArray, model)
 
+    def set_params(self, activator, multiplier):
+        self.activator = activator
+        self.multiplier = multiplier
+
     def ___deserialize___(self, path):
         with open(path, 'rb') as handle:
             return pickle.load(handle)
@@ -116,14 +114,11 @@ class ModelTraining:
         else:   
             matrix = [[{'matches': 0, 'won':0, 'winrate' : 0} for x in range(len(self.heroesArray))] for y in range(len(self.heroesArray))] 
             for x in self.con["data"].find(limit = self.trainSkip):
-                if any(player is {} or 'hero_id' not in player or player['hero_id'] is None for player in x['players']):
+                if any(player is {} or 'hero_id' not in player or player['hero_id'] in [None,0] for player in x['players']):
                     continue
                 for i in range(0,5):
                     for j in range (i+1, 5):
-                        r,c = self.originalHeroes[x['players'][i]['hero_id']], self.originalHeroes[x['players'][j]['hero_id']]
-                        r,c = min(r,c), max(r,c)
-                        matrix[r][c]['matches']+=1
-                        matrix[r][c]['won']+=x['radiant_win']
+                        self.___eval_matrix_match___(matrix, x, i, j, False)
                     for j in range (5,10):
                         a,b = self.originalHeroes[x['players'][i]['hero_id']], self.originalHeroes[x['players'][j]['hero_id']]
                         r,c = max(a,b), min(a,b)
@@ -131,19 +126,20 @@ class ModelTraining:
                         matrix[r][c]['won']+= (a == r) == x['radiant_win']
                 for i in range(5,9):
                     for j in range (i+1, 10):
-                        r,c = self.originalHeroes[x['players'][i]['hero_id']], self.originalHeroes[x['players'][j]['hero_id']]
-                        r,c = min(r,c), max(r,c)
-                        matrix[r][c]['matches']+=1
-                        matrix[r][c]['won']+= not x['radiant_win']
+                        self.___eval_matrix_match___(matrix, x, i, j, True)
             for i in range(0,len(self.heroesArray)):
-                for j in range (0, len(self.heroesArray)):
-                    if (i == j):
-                        continue
+                for j in range (i+1, len(self.heroesArray)):
                     matrix[i][j]['winrate'] = 0 if matrix[i][j]['matches'] == 0 else matrix[i][j]['won'] / matrix[i][j]['matches']
+                    matrix[j][i]['winrate'] = 0 if matrix[j][i]['matches'] == 0 else matrix[j][i]['won'] / matrix[j][i]['matches']
             self.___serialize___('matrices', self.trainSkip, matrix)
             self.matrix = matrix
         return self.matrix
 
+    def ___eval_matrix_match___(self, matrix, match, i, j, flag):
+        r,c = self.originalHeroes[match['players'][i]['hero_id']], self.originalHeroes[match['players'][j]['hero_id']]
+        r,c = min(r,c), max(r,c)
+        matrix[r][c]['matches']+=1
+        matrix[r][c]['won']+= not match['radiant_win'] if flag else match['radiant_win']
 
 
 
@@ -198,7 +194,7 @@ class ModelTraining:
         else:   
             model = {}
             for x in self.con["data"].find(limit = self.modelSize):
-                if any(player is {} or 'hero_id' not in player or player['hero_id'] is None for player in x['players']):
+                if any(player is {} or 'hero_id' not in player or player['hero_id'] in [0,None] for player in x['players']):
                     continue
                 key = []
                 for player in x['players']:
@@ -223,7 +219,7 @@ class ModelTraining:
     def ___test_model___(self, clusters, model):
         testResult = {'matches': 0, 'correct': 0, 'nodata': 0}
         for x in self.con["data"].find(skip=self.trainSkip, limit = self.trainSize):
-            if any(player is {} or 'hero_id' not in player or player['hero_id'] is None for player in x['players']):
+            if any(player is {} or 'hero_id' not in player or player['hero_id'] in [0,None] for player in x['players']):
                 continue
             key = []
             hkey = []
@@ -243,12 +239,13 @@ class ModelTraining:
                 testResult['nodata']+=1
                 continue
             adv = self.___evaluate_advantage___(hkey)
-            evaluation =  model[key]['radiantwin'] / model[key]['matches'] + adv
+            evaluation =  model[key]['radiantwin'] / model[key]['matches'] + adv*self.multiplier
             #print(str(adv) + ' ' + str(model[rkey]['radiantwin'] / model[rkey]['matches']) + ' ' + str(evaluation) + ' ' + str(x['radiant_win']))
-            isRadiant = evaluation > 0.5
+            isRadiant = evaluation > self.activator
             testResult['matches']+=1
             testResult['correct']+=int(isRadiant == x['radiant_win'])
         return testResult
+
     
     def ___evaluate_advantage___(self, heroes):
         ladv = 0
@@ -262,13 +259,13 @@ class ModelTraining:
             for j in range (5,10):
                 r,c = max(heroes[i], heroes[j]), min(heroes[i], heroes[j])
                 k+=1
-                v += self.matrix[r][c]['winrate'] if heroes[i]>heroes[j] else 1-self.matrix[r][c]['winrate'] #???
+                v += self.matrix[r][c]['winrate'] if heroes[i]>heroes[j] else 1-self.matrix[r][c]['winrate'] 
         for i in range(5,10):
             for j in range (i+1, 10):
                 r,c = min(heroes[i], heroes[j]), max(heroes[i], heroes[j])
                 radv += self.matrix[r][c]['winrate']
         result = (ladv - radv)/10 + v/25-0.5
-        return result*1.7
+        return result
 
     #print('No data: %s' % testResult['nodata'])
     #print('Matches tested: %s' % testResult['matches'])
@@ -285,33 +282,32 @@ import numpy as np
 m = ModelTraining(70000,6000)
 m._hero_matrix_()
 m.prepare_data(70000)
-trained = m.clusterize_train(2)
 
 fig = plt.figure()
 ax = fig.gca(projection='3d')
 
 # Make data.
-samples = np.arange(30000, 93000, 3000, dtype=np.dtype(int))
-clusters = np.arange(3, 10, 1, dtype=np.dtype(int))
-X, Y = np.meshgrid(samples, clusters)
+activator = np.arange(0.4, 0.6, 0.01, dtype=np.dtype(float))
+multiplier = np.arange(0.0, 2.0, 0.1, dtype=np.dtype(float))
+X, Y = np.meshgrid(activator, multiplier)
 data = lambda x : x['correct']/x['matches']*100
 Z = np.copy(X)
 for i in range(np.size(Z,1)):
-    m.prepare_data(X[0,i].item())
     for j in range(np.size(Z,0)):
-        trained = m.clusterize_train(Y[j,i].item())
+        m.set_params(X[0,i].item(), Y[j,i].item())
+        trained = m.clusterize_train(2)
         Z[j,i] = data(trained)
 
 
-surf = ax.plot_surface(X, Y, Z, cmap=cm.coolwarm, rstride=1, cstride=1,
+surf = ax.plot_surface(X, Y, Z, cmap= cm.get_cmap("coolwarm"), rstride=1, cstride=1,
                        linewidth=0, antialiased=True)
 
-ax.set_zlim(48, 56)
+ax.set_zlim(46, 61)
 
-ax.set_xlabel('Обучающая выборка') 
-ax.set_xticks(samples)
-ax.set_ylabel('Количество кластеров') 
-ax.set_yticks(clusters)
+ax.set_xlabel('Активатор') 
+ax.set_xticks(activator)
+ax.set_ylabel('Множитель') 
+ax.set_yticks(multiplier)
 ax.set_zlabel('Точность предсказания') 
 ax.zaxis.set_major_locator(LinearLocator(10))
 ax.zaxis.set_major_formatter(FormatStrFormatter('%.02f'))
