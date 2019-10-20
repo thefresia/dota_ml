@@ -40,7 +40,7 @@ def testOne(activator, multiplier, clusters = 2):
     return model.clusterize_train(clusters)
 
 def testRange(activatorStart = 0.4, activatorEnd = 0.6, activatorStep = 0.005, 
-        multiplierStart = 1.0, multiplierEnd = 2.0, multiplierStep = 0.01):
+        multiplierStart = 0.0, multiplierEnd = 2.0, multiplierStep = 0.02):
     fig = plt.figure()
     ax = fig.gca(projection='3d')
     activator = np.arange(activatorStart, activatorEnd, activatorStep, dtype=np.dtype(float))
