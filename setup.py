@@ -9,7 +9,7 @@ setup(
         "cffi==1.13.0",
         "chardet==3.0.4",
         "constantly==15.1.0",
-        "cryptography==2.8",
+        "cryptography==3.2",
         "cssselect==1.1.0",
         "cycler==0.10.0",
         "hyperlink==19.0.0",
