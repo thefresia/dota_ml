@@ -43,7 +43,7 @@ setup(
         "service-identity==18.1.0",
         "six==1.12.0",
         "twisted==19.7.0; python_version != '3.4'",
-        "urllib3==1.25.6",
+        "urllib3==1.26.5",
         "w3lib==1.21.0",
         "zope.interface==4.6.0",
     ],
