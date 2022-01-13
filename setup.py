@@ -24,7 +24,7 @@ setup(
         "numpy==1.17.3",
         "pandas==0.25.2",
         "parsel==1.5.2",
-        "pillow==6.2.0",
+        "pillow==9.0.0",
         "pyasn1==0.4.7",
         "pyasn1-modules==0.2.7",
         "pycparser==2.19",
