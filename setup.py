@@ -39,7 +39,7 @@ setup(
         "requests==2.22.0",
         "scikit-learn==0.21.3",
         "scipy==1.3.1",
-        "scrapy==1.7.3",
+        "scrapy==1.8.2",
         "service-identity==18.1.0",
         "six==1.12.0",
         "twisted==19.7.0; python_version != '3.4'",
